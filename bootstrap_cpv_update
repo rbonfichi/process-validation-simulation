@@ -1,0 +1,76 @@
+
+################################################################################
+# Case Study 2 – CPV bootstrap on 23 lots (3 PPQ + 20 commercial)
+###############################################################################
+
+## ----------------------------- 1. Data --------------------------------------
+# 3 PPQ conformance batches
+assay_ppq <- c(98.22, 98.21, 98.61)
+
+# 20 commercial lots (example set: one high tail, one low tail)
+assay_com <- c(98.52, 98.67, 98.38, 98.25, 98.23,
+               98.82, 98.36, 98.81, 98.49, 98.64,
+               98.74, 98.34, 98.91, 98.68, 99.40,   # high tail
+               98.43, 98.00, 98.36, 98.09, 98.38)   # low tail
+
+assay <- c(assay_ppq, assay_com)   # n = 23
+LSL   <- 97.2
+USL   <- 99.6
+
+## ----------------------------- 2. Packages ----------------------------------
+suppressPackageStartupMessages(library(boot))
+
+## ----------------------------- 3. Statistic functions -----------------------
+cpk_fun <- function(data, idx) {
+  s <- data[idx]
+  (min(USL - mean(s), mean(s) - LSL)) / (3 * sd(s))
+}
+
+oos_fun <- function(data, idx) {
+  s <- data[idx]
+  mean(s < LSL | s > USL)          # returns proportion
+}
+
+## ----------------------------- 4. Bootstrap ---------------------------------
+set.seed(123)                       # reproducible resampling
+R <- 5000
+boot_cpk <- boot(assay, cpk_fun, R = R)
+boot_oos <- boot(assay, oos_fun, R = R)
+
+## 4a. Cpk BCa interval (always works for n ≥ 5)
+ci_cpk <- boot.ci(boot_cpk, type = "bca")$bca[4:5]
+
+## 4b. %OOS interval: try BCa, else fallback to percentiles
+ci_oos <- tryCatch(
+  boot.ci(boot_oos, type = "bca")$bca[4:5],
+  error = function(e) quantile(boot_oos$t, probs = c(0.025, 0.975))
+)
+
+## Optional: exact Clopper–Pearson bound for comparison
+oos_count <- sum(assay < LSL | assay > USL)
+ci_exact  <- binom.test(oos_count, length(assay))$conf.int[2]
+
+## ----------------------------- 5. Report results ----------------------------
+cat("===== Bootstrap capability update (n = 23 lots) =====\n")
+cat(sprintf("Cpk point estimate          : %.3f\n", boot_cpk$t0))
+cat(sprintf("Cpk 95 %% BCa CI             : [%.3f ; %.3f]\n",
+            ci_cpk[1], ci_cpk[2]))
+cat(sprintf("\nObserved %%OOS               : %.2f %%\n",
+            100 * boot_oos$t0))
+cat(sprintf("Bootstrap 95 %% upper bound  : %.2f %%\n",
+            100 * ci_oos[2]))
+cat(sprintf("Exact Clopper–Pearson upper : %.2f %%\n",
+            100 * ci_exact))
+
+## ----------------------------- 6. (Optional) plot ---------------------------
+hist(boot_cpk$t, breaks = 40, col = "lightblue",
+     main = "Bootstrap distribution of Cpk",
+     xlab = "Cpk")
+abline(v = boot_cpk$t0, lwd = 2, lty = 2, col = "black")
+abline(v = ci_cpk,       lwd = 2, lty = 3, col = "blue")
+legend("topright",
+       legend = c(sprintf("Point estimate = %.3f", boot_cpk$t0),
+                  sprintf("95%% CI = [%.2f–%.2f]", ci_cpk[1], ci_cpk[2])),
+       lty = c(2, 3), col = c("black", "blue"), lwd = 2, bty = "n")
+###############################################################################
+
