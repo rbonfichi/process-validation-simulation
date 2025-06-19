@@ -1,0 +1,91 @@
+###############################################################################
+# Comparison of three distributions (Triangular, Uniform, Normal “6-sigma”)
+# for early validation when only min-mode-max information is available
+###############################################################################
+
+## ---------------------------------------------------------------------------
+## USER-MODIFIABLE PARAMETERS
+## ---------------------------------------------------------------------------
+set.seed(123)
+n_sim    <- 1e5          # number of simulated values per distribution
+min_val  <- 97.2
+mode_val <- 98.4         # set NA if no process set-point; triangular skipped
+max_val  <- 99.4
+LSL      <- 97.2
+USL      <- 99.6
+plot_on  <- TRUE         # set FALSE to suppress plots
+## ---------------------------------------------------------------------------
+
+library(triangle)   # for triangular sampling
+library(dplyr)
+library(ggplot2)    # not essential for base plots but useful later
+
+## Helper functions
+risk <- function(x) mean(x < LSL | x > USL)
+cpk  <- function(x) (min(USL - mean(x), mean(x) - LSL)) / (3 * sd(x))
+
+results <- list()            # container for summary output
+
+legend_spec <- function() {  # adds a legend with spec lines
+  legend("topright",
+         legend = c(paste0("LSL = ", LSL),
+                    paste0("USL = ", USL)),
+         col = "red", lty = 2, lwd = 2, bty = "n")
+}
+
+## ---------- 1. Triangular ---------------------------------------------------
+if (!is.na(mode_val)) {
+  x_tri <- rtriangle(n_sim, a = min_val, b = max_val, c = mode_val)
+  results$Triangular <- list(
+    summary  = summary(x_tri),
+    OOS_perc = 100 * risk(x_tri),
+    Cpk      = cpk(x_tri)
+  )
+  if (plot_on) {
+    hist(x_tri, breaks = 60, col = "lightblue",
+         main = "Triangular distribution", xlab = "Assay (%)")
+    abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
+    legend_spec()
+  }
+}
+
+## ---------- 2. Uniform ------------------------------------------------------
+x_unif <- runif(n_sim, min_val, max_val)
+results$Uniform <- list(
+  summary  = summary(x_unif),
+  OOS_perc = 100 * risk(x_unif),
+  Cpk      = cpk(x_unif)
+)
+if (plot_on) {
+  hist(x_unif, breaks = 60, col = "lightblue",
+       main = "Uniform distribution", xlab = "Assay (%)")
+  abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
+  legend_spec()
+}
+
+## ---------- 3. Normal (6-sigma rule) ---------------------------------------
+mu_est    <- ifelse(is.na(mode_val), mean(c(min_val, max_val)), mode_val)
+sigma_est <- (max_val - min_val) / 6          # range = 6σ heuristic
+x_norm    <- rnorm(n_sim, mu_est, sigma_est)
+
+results$Normal <- list(
+  summary  = summary(x_norm),
+  OOS_perc = 100 * risk(x_norm),
+  Cpk      = cpk(x_norm)
+)
+if (plot_on) {
+  hist(x_norm, breaks = 60, col = "lightblue",
+       main = "Normal distribution (range/6 σ)", xlab = "Assay (%)")
+  abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
+  legend_spec()
+}
+
+## ---------- 4. Print comparative table --------------------------------------
+cat("\n===== COMPARATIVE RESULTS =====\n")
+for (d in names(results)) {
+  cat("\n---", d, "---\n")
+  print(results[[d]]$summary)
+  cat(sprintf("Simulated %%OOS : %.3f %%\n", results[[d]]$OOS_perc))
+  cat(sprintf("Simulated Cpk   : %.3f\n",  results[[d]]$Cpk))
+}
+###############################################################################
