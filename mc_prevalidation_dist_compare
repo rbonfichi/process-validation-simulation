@@ -1,86 +1,81 @@
 ###############################################################################
 # Comparison of three distributions (Triangular, Uniform, Normal “6-sigma”)
-# for early validation when only min-mode-max information is available
+# – with a common x-axis so that LSL and USL appear on every histogram
 ###############################################################################
 
-## ---------------------------------------------------------------------------
-## USER-MODIFIABLE PARAMETERS
-## ---------------------------------------------------------------------------
+## ---------------------------  USER SETTINGS  --------------------------------
 set.seed(123)
-n_sim    <- 1e5          # number of simulated values per distribution
+n_sim    <- 1e5
 min_val  <- 97.2
-mode_val <- 98.4         # set NA if no process set-point; triangular skipped
+mode_val <- 98.4          # set NA if no set-point; triangular skipped
 max_val  <- 99.4
 LSL      <- 97.2
 USL      <- 99.6
-plot_on  <- TRUE         # set FALSE to suppress plots
+plot_on  <- TRUE
 ## ---------------------------------------------------------------------------
 
-library(triangle)   # for triangular sampling
+library(triangle)   # triangular sampling
 library(dplyr)
-library(ggplot2)    # not essential for base plots but useful later
 
-## Helper functions
+## ---------- helper functions & common x-range -------------------------------
 risk <- function(x) mean(x < LSL | x > USL)
 cpk  <- function(x) (min(USL - mean(x), mean(x) - LSL)) / (3 * sd(x))
 
-results <- list()            # container for summary output
+# single place to change axis limits if you want extra margin
+x_range <- c(LSL - 0.3, USL + 0.3)   # same limits for all three plots
 
-legend_spec <- function() {  # adds a legend with spec lines
+add_spec <- function() {
+  abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
   legend("topright",
          legend = c(paste0("LSL = ", LSL),
                     paste0("USL = ", USL)),
          col = "red", lty = 2, lwd = 2, bty = "n")
 }
 
-## ---------- 1. Triangular ---------------------------------------------------
+results <- list()
+
+## ------------------------ 1. Triangular -------------------------------------
 if (!is.na(mode_val)) {
   x_tri <- rtriangle(n_sim, a = min_val, b = max_val, c = mode_val)
-  results$Triangular <- list(
-    summary  = summary(x_tri),
-    OOS_perc = 100 * risk(x_tri),
-    Cpk      = cpk(x_tri)
-  )
+  results$Triangular <- list(summary = summary(x_tri),
+                             OOS_perc = 100 * risk(x_tri),
+                             Cpk      = cpk(x_tri))
   if (plot_on) {
     hist(x_tri, breaks = 60, col = "lightblue",
-         main = "Triangular distribution", xlab = "Assay (%)")
-    abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
-    legend_spec()
+         main = "Triangular distribution", xlab = "Assay (%)",
+         xlim = x_range)
+    add_spec()
   }
 }
 
-## ---------- 2. Uniform ------------------------------------------------------
+## ------------------------ 2. Uniform ----------------------------------------
 x_unif <- runif(n_sim, min_val, max_val)
-results$Uniform <- list(
-  summary  = summary(x_unif),
-  OOS_perc = 100 * risk(x_unif),
-  Cpk      = cpk(x_unif)
-)
+results$Uniform <- list(summary = summary(x_unif),
+                        OOS_perc = 100 * risk(x_unif),
+                        Cpk      = cpk(x_unif))
 if (plot_on) {
   hist(x_unif, breaks = 60, col = "lightblue",
-       main = "Uniform distribution", xlab = "Assay (%)")
-  abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
-  legend_spec()
+       main = "Uniform distribution", xlab = "Assay (%)",
+       xlim = x_range)
+  add_spec()
 }
 
-## ---------- 3. Normal (6-sigma rule) ---------------------------------------
+## ------------------------ 3. Normal (6σ rule) -------------------------------
 mu_est    <- ifelse(is.na(mode_val), mean(c(min_val, max_val)), mode_val)
-sigma_est <- (max_val - min_val) / 6          # range = 6σ heuristic
+sigma_est <- (max_val - min_val) / 6
 x_norm    <- rnorm(n_sim, mu_est, sigma_est)
 
-results$Normal <- list(
-  summary  = summary(x_norm),
-  OOS_perc = 100 * risk(x_norm),
-  Cpk      = cpk(x_norm)
-)
+results$Normal <- list(summary = summary(x_norm),
+                       OOS_perc = 100 * risk(x_norm),
+                       Cpk      = cpk(x_norm))
 if (plot_on) {
   hist(x_norm, breaks = 60, col = "lightblue",
-       main = "Normal distribution (range/6 σ)", xlab = "Assay (%)")
-  abline(v = c(LSL, USL), col = "red", lty = 2, lwd = 2)
-  legend_spec()
+       main = "Normal distribution (range/6 σ)", xlab = "Assay (%)",
+       xlim = x_range)
+  add_spec()
 }
 
-## ---------- 4. Print comparative table --------------------------------------
+## --------------------- 4. Console summary -----------------------------------
 cat("\n===== COMPARATIVE RESULTS =====\n")
 for (d in names(results)) {
   cat("\n---", d, "---\n")
